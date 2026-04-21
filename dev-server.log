@@ -1,0 +1,41 @@
+
+> livestock-marketplace@0.1.0 dev
+> next dev --port 3000
+
+▲ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.56.1:3000
+- Environments: .env.local
+✓ Ready in 550ms
+Creating turbopack project {
+  dir: 'C:\\Users\\BUNNY YADAV\\livestock-marketplace',
+  testMode: true
+}
+
+ GET / 200 in 2.2s (next.js: 1898ms, application-code: 269ms)
+MongoDB connected ✅
+MongoDB connected ✅
+MongoDB connected ✅
+ GET /api/notifications 200 in 1980ms (next.js: 562ms, application-code: 1418ms)
+ GET /api/listings/personalized 200 in 2.2s (next.js: 597ms, application-code: 1605ms)
+ GET /api/listings?sort=newest&page=1 200 in 2.4s (next.js: 524ms, application-code: 1863ms)
+MongoDB connected ✅
+ GET /api/favorites 200 in 188ms (next.js: 35ms, application-code: 152ms)
+MongoDB connected ✅
+ GET /api/favorites 200 in 182ms (next.js: 2ms, application-code: 179ms)
+MongoDB connected ✅
+ GET /api/favorites 200 in 176ms (next.js: 2ms, application-code: 174ms)
+MongoDB connected ✅
+ GET /api/favorites 200 in 184ms (next.js: 2ms, application-code: 181ms)
+MongoDB connected ✅
+ GET /api/favorites 200 in 69ms (next.js: 3ms, application-code: 66ms)
+MongoDB connected ✅
+ GET /api/favorites 200 in 186ms (next.js: 2ms, application-code: 184ms)
+MongoDB connected ✅
+ GET /api/favorites 200 in 183ms (next.js: 2ms, application-code: 181ms)
+MongoDB connected ✅
+ GET /api/favorites 200 in 183ms (next.js: 2ms, application-code: 181ms)
+MongoDB connected ✅
+ GET /api/notifications 200 in 31ms (next.js: 2ms, application-code: 28ms)
+MongoDB connected ✅
+ GET /api/notifications 200 in 28ms (next.js: 2ms, application-code: 26ms)

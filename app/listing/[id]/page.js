@@ -24,7 +24,7 @@ function formatDays(days) {
 }
 
 async function getListing(id) {
-  const res = await fetch(`http://localhost:3000/api/listings/${id}`, {
+  const res = await fetch(`/api/listings/${id}`, {
     cache: "no-store",
   });
   if (!res.ok) return null;
@@ -34,7 +34,7 @@ async function getListing(id) {
 async function getRecommendations(id) {
   try {
     const res = await fetch(
-      `http://localhost:3000/api/listings/recommend?id=${id}`,
+      `/api/listings/recommend?id=${id}`,
       { cache: "no-store" }
     );
     if (!res.ok) return [];

@@ -6,7 +6,7 @@ A full-stack web application that enables users to **buy and sell livestock** (b
 
 ## 🚀 Live Demo
 
-👉 https://your-app.vercel.app
+👉 https://livestock-marketplace-six.vercel.app/
 
 ---
 

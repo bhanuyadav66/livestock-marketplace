@@ -198,6 +198,21 @@ npm start
 
 ## 📸 Screenshots
 
+### 🏠 Home Page
+![Home](public/screenshots/home.png)
+
+### 📝 Create Listing
+![Create](public/screenshots/create.png)
+
+### 💬 Chat System
+![Chat](public/screenshots/chat.png)
+
+### 🛠️ Admin Dashboard
+![Admin](public/screenshots/admin.png)
+
+### 🔐 Authentication
+![Login](public/screenshots/login.png)
+
 
 
 ---

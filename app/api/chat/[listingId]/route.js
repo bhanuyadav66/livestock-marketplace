@@ -34,11 +34,69 @@ export async function GET(req, { params }) {
     query.buyer = buyerId;
   }
 
-  const chat = await Chat.findOne(query)
-    .populate("buyer", "name email")
-    .populate("seller", "name email")
-    .populate("listingId", "title")
-    .populate("messages.sender", "name email");
+  const chat = await Chat.findOne(query);
+
+  if (chat) {
+    let changed = false;
+
+    chat.messages.forEach((message) => {
+      if (message.sender?.toString() !== userId && !message.seen) {
+        message.seen = true;
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      await chat.save();
+    }
+
+    await chat.populate("buyer", "name email");
+    await chat.populate("seller", "name email");
+    await chat.populate("listingId", "title");
+    await chat.populate("messages.sender", "name email");
+  }
 
   return Response.json(chat || { messages: [] });
+}
+
+export async function PATCH(req, { params }) {
+  await connectDB();
+
+  const userId = getUserId(req);
+  if (!userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { listingId } = await params;
+  const { buyerId } = await req.json();
+
+  const query = {
+    listingId,
+    $or: [{ buyer: userId }, { seller: userId }],
+  };
+
+  if (buyerId) {
+    query.buyer = buyerId;
+  }
+
+  const chat = await Chat.findOne(query);
+
+  if (!chat) {
+    return Response.json({ messages: [] });
+  }
+
+  let changed = false;
+
+  chat.messages.forEach((message) => {
+    if (message.sender?.toString() !== userId && !message.seen) {
+      message.seen = true;
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    await chat.save();
+  }
+
+  return Response.json({ ok: true });
 }

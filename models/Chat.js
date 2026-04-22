@@ -21,6 +21,10 @@ const chatSchema = new mongoose.Schema(
           ref: "User",
         },
         text: String,
+        seen: {
+          type: Boolean,
+          default: false,
+        },
         createdAt: {
           type: Date,
           default: Date.now,

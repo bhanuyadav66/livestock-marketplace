@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:3001", {
+const socket = io("https://socket-server-iuxl.onrender.com/", {
   autoConnect: false,
 });
 
@@ -20,6 +20,23 @@ function getTokenUserId() {
   }
 }
 
+function getSenderId(message) {
+  return (
+    message.sender?._id?.toString?.() ||
+    message.sender?.toString?.() ||
+    message.sender
+  );
+}
+
+function formatMessageTime(value) {
+  if (!value) return "";
+
+  return new Intl.DateTimeFormat("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export default function ChatBox({
   listingId,
   sellerId: initialSellerId,
@@ -32,11 +49,72 @@ export default function ChatBox({
 }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
+  const [typing, setTyping] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState({});
   const [showChat, setShowChat] = useState(defaultOpen);
   const [userId, setUserId] = useState(null);
   const [resolvedSellerId, setResolvedSellerId] = useState(initialSellerId);
+  const messagesEndRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
   const sellerId = resolvedSellerId || initialSellerId;
-  const room = listingId && (buyerId || userId) ? `${listingId}_${buyerId || userId}` : null;
+  const activeBuyerId = buyerId || userId;
+  const otherUserId = userId === sellerId ? activeBuyerId : sellerId;
+
+  const markMessagesSeen = useCallback(async () => {
+    if (!listingId || !activeBuyerId) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      await fetch(`/api/chat/${listingId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ buyerId: activeBuyerId }),
+      });
+
+      socket.emit("markSeen", { listingId, buyerId: activeBuyerId });
+    } catch (error) {
+      console.error("Error marking messages seen:", error);
+    }
+  }, [listingId, activeBuyerId]);
+
+  const loadMessages = useCallback(async () => {
+    if (!listingId || !sellerId || !userId || !showChat) return;
+
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const params = new URLSearchParams();
+      if (activeBuyerId) params.set("buyerId", activeBuyerId);
+
+      const query = params.toString() ? `?${params}` : "";
+      const res = await fetch(`/api/chat/${listingId}${query}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        setMessages([]);
+        return;
+      }
+
+      const data = await res.json();
+      setMessages(data.messages || []);
+
+      if (data.messages?.length) {
+        void markMessagesSeen();
+      }
+    } catch (err) {
+      console.error(err);
+      setMessages([]);
+    }
+  }, [listingId, sellerId, activeBuyerId, userId, showChat, markMessagesSeen]);
 
   useEffect(() => {
     const id = getTokenUserId();
@@ -44,6 +122,23 @@ export default function ChatBox({
       queueMicrotask(() => setUserId(id));
     }
   }, []);
+
+  useEffect(() => {
+    if (!userId || !showChat) return;
+
+    socket.connect();
+    socket.emit("userOnline", userId);
+
+    function handleOnlineUsers(users) {
+      setOnlineUsers(users || {});
+    }
+
+    socket.on("onlineUsers", handleOnlineUsers);
+
+    return () => {
+      socket.off("onlineUsers", handleOnlineUsers);
+    };
+  }, [userId, showChat]);
 
   useEffect(() => {
     setResolvedSellerId(initialSellerId);
@@ -71,72 +166,110 @@ export default function ChatBox({
   }, [listingId, sellerId]);
 
   useEffect(() => {
-    if (!room || !showChat) return;
+    if (!listingId || !activeBuyerId || !showChat) return;
 
     socket.connect();
-    socket.emit("join_room", room);
+    socket.emit("joinRoom", { listingId, buyerId: activeBuyerId });
 
-    function handleReceiveMessage(data) {
-      if (data.room !== room) return;
+    function handleReceiveMessage(msg) {
+      if (msg.listingId && msg.listingId !== listingId) return;
+      if (msg.buyerId && msg.buyerId !== activeBuyerId) return;
 
+      setTyping(false);
       setMessages((prev) => {
-        if (data.messageId && prev.some((msg) => msg._id === data.messageId)) {
+        const messageId = msg._id || msg.messageId;
+
+        if (messageId && prev.some((prevMsg) => prevMsg._id === messageId)) {
           return prev;
         }
 
         return [
           ...prev,
           {
-            _id: data.messageId,
-            sender: data.sender,
-            text: data.text,
-            createdAt: data.createdAt || new Date().toISOString(),
+            _id: messageId,
+            sender: msg.sender,
+            text: msg.text,
+            seen: msg.seen || false,
+            createdAt: msg.createdAt || new Date().toISOString(),
           },
         ];
       });
+
+      void markMessagesSeen();
     }
 
-    socket.on("receive_message", handleReceiveMessage);
+    function handleTyping() {
+      setTyping(true);
+    }
+
+    function handleStopTyping() {
+      setTyping(false);
+    }
+
+    function handleSeen() {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          getSenderId(msg) === userId ? { ...msg, seen: true } : msg
+        )
+      );
+    }
+
+    socket.on("receiveMessage", handleReceiveMessage);
+    socket.on("typing", handleTyping);
+    socket.on("stopTyping", handleStopTyping);
+    socket.on("seen", handleSeen);
 
     return () => {
-      socket.emit("leave_room", room);
-      socket.off("receive_message", handleReceiveMessage);
+      socket.off("receiveMessage", handleReceiveMessage);
+      socket.off("typing", handleTyping);
+      socket.off("stopTyping", handleStopTyping);
+      socket.off("seen", handleSeen);
+      socket.disconnect();
     };
-  }, [room, showChat]);
+  }, [listingId, activeBuyerId, showChat, userId, markMessagesSeen]);
 
   useEffect(() => {
-    if (!listingId || !sellerId || !userId || !showChat) return;
+    void loadMessages();
+  }, [loadMessages]);
 
-    async function fetchMessages() {
-      const token = localStorage.getItem("token");
-      if (!token) return;
+  useEffect(() => {
+    if (!showChat) return;
 
-      try {
-        const params = new URLSearchParams();
-        if (buyerId) params.set("buyerId", buyerId);
+    const interval = setInterval(() => {
+      void loadMessages();
+    }, 5000);
 
-        const query = params.toString() ? `?${params}` : "";
-        const res = await fetch(`/api/chat/${listingId}${query}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+    return () => clearInterval(interval);
+  }, [showChat, loadMessages]);
 
-        if (!res.ok) {
-          setMessages([]);
-          return;
-        }
+  useEffect(() => {
+    if (!showChat) return;
 
-        const data = await res.json();
-        setMessages(data.messages || []);
-      } catch (err) {
-        console.error(err);
-        setMessages([]);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, typing, showChat]);
+
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
       }
+    };
+  }, []);
+
+  const handleTyping = () => {
+    if (!listingId || !activeBuyerId) return;
+
+    socket.connect();
+    socket.emit("typing", { listingId, buyerId: activeBuyerId });
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
     }
 
-    fetchMessages();
-  }, [listingId, sellerId, buyerId, userId, showChat]);
+    typingTimeoutRef.current = setTimeout(() => {
+      socket.emit("stopTyping", { listingId, buyerId: activeBuyerId });
+    }, 1000);
+  };
 
   const handleSend = async () => {
     if (!text.trim()) return;
@@ -148,6 +281,14 @@ export default function ChatBox({
     }
 
     try {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      if (listingId && activeBuyerId) {
+        socket.emit("stopTyping", { listingId, buyerId: activeBuyerId });
+      }
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -169,7 +310,7 @@ export default function ChatBox({
       const chat = await res.json();
       const savedMessage = chat.messages?.at(-1);
 
-      if (room && savedMessage) {
+      if (savedMessage) {
         setMessages((prev) => {
           if (prev.some((msg) => msg._id === savedMessage._id)) {
             return prev;
@@ -179,11 +320,13 @@ export default function ChatBox({
         });
 
         socket.connect();
-        socket.emit("send_message", {
-          room,
-          messageId: savedMessage._id,
+        socket.emit("sendMessage", {
+          listingId,
+          buyerId: activeBuyerId,
           sender: savedMessage.sender,
           text: savedMessage.text,
+          seen: savedMessage.seen || false,
+          messageId: savedMessage._id,
           createdAt: savedMessage.createdAt,
         });
       } else {
@@ -206,11 +349,24 @@ export default function ChatBox({
           {openButtonLabel}
         </button>
       ) : (
-        <div className="soft-panel relative p-4">
+        <div className="soft-panel relative flex h-[520px] flex-col p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-              {title}
-            </h3>
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                {title}
+              </h3>
+              {otherUserId ? (
+                <p
+                  className={`text-sm ${
+                    onlineUsers[otherUserId]
+                      ? "text-green-500"
+                      : "text-gray-400"
+                  }`}
+                >
+                  {onlineUsers[otherUserId] ? "Online" : "Offline"}
+                </p>
+              ) : null}
+            </div>
             {showToggle ? (
               <button
                 onClick={() => setShowChat(false)}
@@ -221,29 +377,31 @@ export default function ChatBox({
             ) : null}
           </div>
 
-          <div className="mb-3 flex h-64 flex-col gap-3 overflow-y-auto rounded-xl border border-gray-200 bg-white p-4 shadow-inner dark:border-gray-700 dark:bg-gray-900">
+          <div className="mb-3 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-xl border border-gray-200 bg-white p-4 shadow-inner dark:border-gray-700 dark:bg-gray-900">
             {messages.length === 0 ? (
               <p className="mt-auto mb-auto text-center text-sm italic text-gray-400">
                 {emptyState}
               </p>
             ) : (
               messages.map((msg) => {
-                const senderId =
-                  msg.sender?._id?.toString?.() ||
-                  msg.sender?.toString?.() ||
-                  msg.sender;
+                const senderId = getSenderId(msg);
                 const isSender = senderId === userId;
                 const senderName = isSender
                   ? "You"
                   : msg.sender?.name || "Other user";
+                const status = !msg._id
+                  ? "✓ Sent"
+                  : msg.seen
+                    ? "✓✓ Seen"
+                    : "✓✓ Delivered";
 
                 return (
                   <div
                     key={msg._id || msg.createdAt}
-                    className={`flex max-w-[75%] flex-col rounded-2xl px-4 py-2 text-sm ${
+                    className={`flex max-w-xs flex-col rounded-xl p-3 text-sm shadow-sm sm:max-w-md ${
                       isSender
-                        ? "self-end rounded-br-sm bg-blue-500 text-white shadow-sm"
-                        : "self-start rounded-bl-sm bg-gray-200 text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100"
+                        ? "ml-auto self-end bg-blue-500 text-white"
+                        : "self-start bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100"
                     }`}
                   >
                     <span
@@ -256,16 +414,35 @@ export default function ChatBox({
                       {senderName}
                     </span>
                     <span>{msg.text}</span>
+                    <span
+                      className={`mt-1 text-[10px] ${
+                        isSender
+                          ? "self-end text-blue-100"
+                          : "self-start text-gray-500 dark:text-gray-300"
+                      }`}
+                    >
+                      {formatMessageTime(msg.createdAt)}
+                      {isSender ? ` · ${status}` : ""}
+                    </span>
                   </div>
                 );
               })
             )}
+            {typing ? (
+              <p className="text-sm italic text-gray-500 dark:text-gray-400">
+                Typing...
+              </p>
+            ) : null}
+            <div ref={messagesEndRef} />
           </div>
 
-          <div className="flex gap-2">
+          <div className="sticky bottom-0 flex gap-2 bg-white pt-1 dark:bg-gray-950">
             <input
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value);
+                handleTyping();
+              }}
               className="form-control"
               placeholder="Type your message..."
               onKeyDown={(e) => e.key === "Enter" && handleSend()}

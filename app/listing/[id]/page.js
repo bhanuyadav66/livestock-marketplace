@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { headers } from "next/headers";
 import MapWrapper from "@/components/MapWrapper";
 import Link from "next/link";
 import ListingChatSection from "@/components/ListingChatSection";
@@ -24,7 +25,11 @@ function formatDays(days) {
 }
 
 async function getListing(id) {
-  const res = await fetch(`/api/listings/${id}`, {
+  const headersList = await headers();
+  const host = headersList.get("host");
+  const protocol = process.env.NODE_ENV === "development" ? "http" : "https";
+
+  const res = await fetch(`${protocol}://${host}/api/listings/${id}`, {
     cache: "no-store",
   });
   if (!res.ok) return null;
@@ -33,8 +38,12 @@ async function getListing(id) {
 
 async function getRecommendations(id) {
   try {
+    const headersList = await headers();
+    const host = headersList.get("host");
+    const protocol = process.env.NODE_ENV === "development" ? "http" : "https";
+
     const res = await fetch(
-      `/api/listings/recommend?id=${id}`,
+      `${protocol}://${host}/api/listings/recommend?id=${id}`,
       { cache: "no-store" }
     );
     if (!res.ok) return [];
@@ -93,6 +102,7 @@ export default async function ListingPage({ params }) {
           alt={listing.title}
           width={1200}
           height={800}
+          loading="eager"
           unoptimized
           className="h-80 w-full object-cover"
         />

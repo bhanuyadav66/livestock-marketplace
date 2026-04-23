@@ -25,6 +25,7 @@ export default function PricePredictor({ defaultAnimal = "", onUseSuggestion }) 
   const [result,     setResult]     = useState(null);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState("");
+  const [mlAvailable, setMlAvailable] = useState(true);
 
   const isDairyAnimal = ["cow", "buffalo", "goat"].includes(animalType);
 
@@ -44,9 +45,17 @@ export default function PricePredictor({ defaultAnimal = "", onUseSuggestion }) 
       const res    = await fetch(`/api/ai/predict?${params}`);
       const data   = await res.json();
 
-      if (!res.ok) throw new Error(data.error || "Prediction failed");
+      if (!res.ok) {
+        const err = new Error(data.error || "Prediction failed");
+        err.mlUnavailable = res.status === 503;
+        throw err;
+      }
       setResult(data);
     } catch (err) {
+      if (err.mlUnavailable) {
+        setMlAvailable(false);
+        return;
+      }
       setError(err.message);
     } finally {
       setLoading(false);
@@ -177,6 +186,17 @@ export default function PricePredictor({ defaultAnimal = "", onUseSuggestion }) 
         .pp-predict-btn:disabled { opacity:.5; cursor:not-allowed; }
 
         .pp-error { color:#fc8181; font-size:12px; margin-top:8px; text-align:center; }
+        .pp-coming-soon {
+          margin: 10px 0 0;
+          padding: 14px;
+          border-radius: 12px;
+          background: rgba(254,189,105,.1);
+          border: 1.5px solid rgba(254,189,105,.28);
+          color: #febd69;
+          font-size: 14px;
+          font-weight: 700;
+          text-align: center;
+        }
 
         /* Result panel */
         .pp-result {
@@ -245,6 +265,12 @@ export default function PricePredictor({ defaultAnimal = "", onUseSuggestion }) 
           AI Price Predictor
         </p>
 
+        {!mlAvailable && (
+          <p className="pp-coming-soon">Estimated price feature coming soon</p>
+        )}
+
+        {mlAvailable && (
+          <>
         {/* Animal selector */}
         <div>
           <p className="pp-label">Animal Type</p>
@@ -374,6 +400,8 @@ export default function PricePredictor({ defaultAnimal = "", onUseSuggestion }) 
               </button>
             )}
           </div>
+        )}
+          </>
         )}
       </div>
     </>
